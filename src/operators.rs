@@ -71,25 +71,119 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
 }
 
 pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: f32) {
-    todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
+    let x_len = x.size();
+ 
+    let w_len = w.size();
+ 
+    let x_silce_num = x_len / w_len;
+ 
+    let y_data = unsafe { y.data_mut() };
+    let w_data = w.data();
+ 
+    for i in 0..x_silce_num{
+        let slice = x.slice(w_len*i, &vec![w_len]); // 创建一个更长生命周期的值
+        let x_slice = slice.data();
+        let sum_of_squares: f32 = x_slice.iter().map(|&xj| xj * xj).sum();
+        let rms = (sum_of_squares / w_len as f32 + epsilon).sqrt();
+ 
+        for j in 0..w_len{
+            y_data[w_len*i + j] = x_slice[j] * w_data[j] / rms;
+        }
+    }
 }
-
+pub fn sigmoid(x: f32) -> f32{
+    1.0 / (1.0 + (-x).exp())
+}
+ 
+ 
 // y = sigmoid(x) * x * y
 // hint: this is an element-wise operation
 pub fn silu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
-    // let len = y.size();
-    // assert!(len == x.size());
-
-    // let _y = unsafe { y.data_mut() };
-    // let _x = x.data();
-
-    todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
+    let len = y.size();
+    assert!(len == x.size());
+ 
+    let y_data = unsafe { y.data_mut() };
+    let x_data = x.data();
+ 
+    // 逐元素计算
+    for i in 0..len {
+        y_data[i] = y_data[i] * x_data[i] * sigmoid(x_data[i]);
+    }
 }
 
+pub fn add<T>(tensor_a: &mut Tensor<T>, tensor_b: &mut Tensor<T>) -> Tensor<T>
+where
+    T: Default + Copy + std::ops::Add<Output = T> + std::ops::Mul<Output = T> + std::fmt::Display,
+{
+    assert!(tensor_a.size() == tensor_b.size());
+    
+    let mut c_data = vec![T::default(); tensor_a.size()];
+
+    let c_shape = tensor_a.shape();
+    
+    for i in 0..tensor_a.size(){
+        c_data[i] = tensor_a.data()[i] + tensor_b.data()[i];
+    }
+
+    Tensor::new(c_data, &c_shape)
+}
+
+pub fn multiple<T>(tensor_a: &Tensor<T>, tensor_b: &Tensor<T>) -> Tensor<T>
+where
+    T: Default + Copy + std::ops::Add<Output = T> + std::ops::Mul<Output = T> + std::fmt::Display,
+{
+    let other_row = tensor_b.shape()[1];
+    
+    let mut c_data = vec![T::default(); tensor_a.shape()[0] * other_row];
+ 
+    let c_shape = vec![tensor_a.shape()[0], other_row];
+ 
+    // 进行矩阵乘法并将结果累加到c
+    for i in 0..tensor_a.shape()[0] {
+        for j in 0..other_row {
+            let mut elem: T = T::default();
+            for k in 0..tensor_a.shape()[1] {
+                // 计算每个元素的乘积
+                let a_value = tensor_a.data()[i * tensor_a.shape()[1] + k];
+                let b_value = tensor_b.data()[k * other_row + j];
+                elem = elem + a_value * b_value;
+ 
+                // 输出当前的乘积和累加值
+                println!("计算: {} * {} = {}", a_value, b_value, a_value * b_value);
+                println!("当前累加值: {}", elem);
+            }
+            // 将计算结果累加到 c_data 中
+            c_data[i * other_row + j] = c_data[i * other_row + j] + elem;
+ 
+            // 输出当前结果矩阵 c_data 的值
+            println!("c_data[{}] = {}", i * other_row + j, c_data[i * other_row + j]);
+        }
+    }
+ 
+    Tensor::new(c_data, &c_shape)
+}
+ 
 // C = beta * C + alpha * A @ B^T
 // hint: You don't need to do an explicit transpose of B
 pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
-    todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
+    let mut c_data = unsafe { c.data_mut() };
+    for elem in c_data.iter_mut(){
+        *elem = *elem * beta;
+    }
+    let b = b.transpose(vec![1, 0]);
+    println!("计算后的b矩阵：");
+    for i in 0..b.shape()[0]{
+        for j in 0..b.shape()[1] {
+            print!("{:.2} ", b.data()[i * b.shape()[1] + j]);
+        }
+        println!();
+    }
+    let elems =  multiple(&a, &b);
+    let elems = elems.data();
+    for i in 0..elems.len(){
+        c_data[i] += elems[i]* alpha;
+    } 
+    
 }
 
 // Dot product of two tensors (treated as vectors)

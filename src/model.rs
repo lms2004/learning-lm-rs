@@ -166,8 +166,20 @@ fn mlp(
     w_gate: &Tensor<f32>,
     rms_w: &Tensor<f32>,
     eps: f32,
-) {
-    todo!("Implement mlp");
+){
+    OP::rms_norm(hidden_states, residual, rms_w, eps);
+ 
+    *gate = OP::multiple(hidden_states, &w_gate.transpose(vec![1, 0]));
+ 
+    *up = OP::multiple(hidden_states, &w_up.transpose(vec![1, 0]));
+ 
+    OP::silu(up, gate);
+ 
+    *hidden_states = up.clone();
+ 
+    *hidden_states = OP::multiple(hidden_states, &w_down.transpose(vec![1, 0]));
+ 
+    *residual = OP::add(residual, hidden_states);
 }
 
 #[test]
